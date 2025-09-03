@@ -1,9 +1,9 @@
-const http = require('node:http');
-const prom = require('prom-client');
-const pm2 = require('pm2');
+import { createServer } from 'node:http';
+import { Registry, Gauge } from 'prom-client';
+import pm2 from 'pm2';
 const logger = require('pino')();
 
-const io = require('pmx');
+import { initModule } from 'pmx';
 
 const prefix = 'pm2';
 const labels = ['id', 'name', 'instance', 'version', 'interpreter', 'node_version'];
@@ -14,27 +14,28 @@ const map = [
   ['uptime', 'Process uptime'],
   ['instances', 'Process instances'],
   ['restarts', 'Process restarts'],
-  ['prev_restart_delay', 'Previous restart delay']
+  ['prev_restart_delay', 'Previous restart delay'],
 ];
 
-const pm2c = (cmd, args = []) => new Promise((resolve, reject) => {
-  pm2[cmd](args, (err, resp) => {
-    if (err) return reject(err);
-    return resolve(resp);
+const pm2c = (cmd, args = []) =>
+  new Promise((resolve, reject) => {
+    pm2[cmd](args, (err, resp) => {
+      if (err) return reject(err);
+      return resolve(resp);
+    });
   });
-});
 
 const begin = new Date();
 
 const metrics = () => {
   const pm = {};
-  const registry = new prom.Registry();
+  const registry = new Registry();
   for (const m of map) {
-    pm[m[0]] = new prom.Gauge({
+    pm[m[0]] = new Gauge({
       name: `${prefix}_${m[0]}`,
       help: m[1],
       labelNames: labels,
-      registers: [registry]
+      registers: [registry],
     });
   }
 
@@ -48,7 +49,7 @@ const metrics = () => {
           version: p.pm2_env.version ? p.pm2_env.version : 'N/A',
           instance: p.pm2_env.NODE_APP_INSTANCE,
           interpreter: p.pm2_env.exec_interpreter,
-          node_version: p.pm2_env.node_version
+          node_version: p.pm2_env.node_version,
         };
 
         const values = {
@@ -58,7 +59,7 @@ const metrics = () => {
           uptime: p.pm2_env.status === 'online' ? Math.round((Date.now() - p.pm2_env.pm_uptime) / 1000) : 0,
           instances: p.pm2_env.instances || 1,
           restarts: p.pm2_env.restart_time,
-          prev_restart_delay: p.pm2_env.prev_restart_delay
+          prev_restart_delay: p.pm2_env.prev_restart_delay,
         };
 
         const names = Object.keys(p.pm2_env.axm_monitor);
@@ -88,11 +89,11 @@ const metrics = () => {
               value = 0;
             }
 
-            pm[metricName] = new prom.Gauge({
+            pm[metricName] = new Gauge({
               name: metricName,
               help: name,
               labelNames: labels,
-              registers: [registry]
+              registers: [registry],
             });
 
             values[metricName] = value;
@@ -121,7 +122,7 @@ const metrics = () => {
 };
 
 const exporter = () => {
-  const server = http.createServer((request, res) => {
+  const server = createServer((request, res) => {
     switch (request.url) {
       case '/': {
         return res.end('<html>PM2 metrics: <a href="/metrics">/metrics</a></html>');
@@ -136,7 +137,7 @@ const exporter = () => {
     }
   });
 
-  return io.initModule({}, (err, conf) => {
+  return initModule({}, (err, conf) => {
     const port = conf.port || 9209;
     const host = conf.host || '0.0.0.0';
 
