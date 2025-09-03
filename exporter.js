@@ -1,4 +1,4 @@
-const http = require('http');
+const http = require('node:http');
 const prom = require('prom-client');
 const pm2 = require('pm2');
 const logger = require('pino')();
@@ -23,6 +23,8 @@ const pm2c = (cmd, args = []) => new Promise((resolve, reject) => {
     return resolve(resp);
   });
 });
+
+const begin = new Date();
 
 const metrics = () => {
   const pm = {};
@@ -53,7 +55,7 @@ const metrics = () => {
           up: p.pm2_env.status === 'online' ? 1 : 0,
           cpu: p.monit.cpu,
           memory: p.monit.memory,
-          uptime: Math.round((Date.now() - p.pm2_env.pm_uptime) / 1000),
+          uptime: p.pm2_env.status === 'online' ? Math.round((Date.now() - p.pm2_env.pm_uptime) / 1000) : 0,
           instances: p.pm2_env.instances || 1,
           restarts: p.pm2_env.restart_time,
           prev_restart_delay: p.pm2_env.prev_restart_delay
@@ -79,16 +81,19 @@ const metrics = () => {
               continue;
             }
 
-            const metricName = `${prefix}_${name.replace(/[^a-z\d]+/gi, '_').toLowerCase()}`;
+            const metricName = `${prefix}_${name.replaceAll(/[^a-z\d]+/gi, '_').toLowerCase()}`;
 
-            if (!pm[metricName]) {
-              pm[metricName] = new prom.Gauge({
-                name: metricName,
-                help: name,
-                labelNames: labels,
-                registers: [registry]
-              });
+            // pm2_event_loop_latency_p95
+            if (metricName === 'pm2_event_loop_latency_p95' && (Date.now() - begin.getTime()) / 1000 <= 45) {
+              value = 0;
             }
+
+            pm[metricName] = new prom.Gauge({
+              name: metricName,
+              help: name,
+              labelNames: labels,
+              registers: [registry]
+            });
 
             values[metricName] = value;
           } catch (error) {
@@ -118,13 +123,16 @@ const metrics = () => {
 const exporter = () => {
   const server = http.createServer((request, res) => {
     switch (request.url) {
-      case '/':
+      case '/': {
         return res.end('<html>PM2 metrics: <a href="/metrics">/metrics</a></html>');
-      case '/metrics':
-        res.setHeader('Content-Type', 'text/plain; version=0.0.4');
+      }
+      case '/metrics': {
+        res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
         return metrics().then(data => res.end(data));
-      default:
+      }
+      default: {
         return res.end('404');
+      }
     }
   });
 
