@@ -1,9 +1,11 @@
 import { createServer } from 'node:http';
 import { Registry, Gauge } from 'prom-client';
 import pm2 from 'pm2';
-const logger = require('pino')();
+import pino from 'pino';
+const logger = pino();
 
-import { initModule } from 'pmx';
+import pkg from 'pmx';
+const { initModule } = pkg;
 
 const prefix = 'pm2';
 const labels = ['id', 'name', 'instance', 'version', 'interpreter', 'node_version'];
